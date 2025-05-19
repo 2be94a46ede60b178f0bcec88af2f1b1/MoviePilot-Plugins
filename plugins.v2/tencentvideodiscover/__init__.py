@@ -85,62 +85,79 @@ def init_base_ui():
 
     ui = []
     for _key, _ in CHANNEL_PARAMS.items():
+        channel_id = CHANNEL_PARAMS[_key]["Id"]
         data = []
         all_index = {}
-        for item in get_page_data(CHANNEL_PARAMS[_key]["Id"]):
-            if str(item.get("item_type")) == "11":
-                if item.get("item_params", {}).get("index_name") not in all_index:
-                    all_index[item["item_params"]["index_name"]] = []
-                    all_index[item["item_params"]["index_name"]].append(item)
-                else:
-                    all_index[item["item_params"]["index_name"]].append(item)
+        try:
+            items = get_page_data(channel_id)
+            if not items:
+                logger.warning(f"Skipping UI generation for channel {_key} due to empty data")
+                continue
 
-        for _, value in all_index.items():
-            data = [
-                {
-                    "component": "VChip",
-                    "props": {
-                        "filter": True,
-                        "tile": True,
-                        "value": j["item_params"]["option_value"],
-                    },
-                    "text": j["item_params"]["option_name"],
-                }
-                for j in value
-                if str(j["item_params"].get("option_value", "")) != "-1"
-            ]
-            if str(value[0]["item_params"].get("option_value", "")) == "-1":
-                text = value[0]["item_params"]["option_name"]
-            else:
-                text = value[0]["item_params"]["index_name"]
-            ui.append(
-                {
-                    "component": "div",
-                    "props": {
-                        "class": "flex justify-start items-center",
-                        "show": "{{mtype == '" + _key + "'}}",
-                    },
-                    "content": [
-                        {
-                            "component": "div",
-                            "props": {"class": "mr-5"},
-                            "content": [
-                                {
-                                    "component": "VLabel",
-                                    "text": text,
-                                }
-                            ],
+            for item in items:
+                if str(item.get("item_type")) == "11":
+                    item_params = item.get("item_params", {})
+                    index_name = item_params.get("index_name")
+                    if not index_name:
+                        logger.warning(f"Missing index_name for item in channel {_key}: {item}")
+                        continue
+                    if index_name not in all_index:
+                        all_index[index_name] = []
+                    all_index[index_name].append(item)
+
+            for _, value in all_index.items():
+                data = [
+                    {
+                        "component": "VChip",
+                        "props": {
+                            "filter": True,
+                            "tile": True,
+                            "value": j["item_params"].get("option_value", ""),
                         },
-                        {
-                            "component": "VChipGroup",
-                            "props": {
-                                "model": value[0]["item_params"]["index_item_key"]
+                        "text": j["item_params"].get("option_name", ""),
+                    }
+                    for j in value
+                    if str(j["item_params"].get("option_value", "")) != "-1"
+                ]
+                if not value:
+                    logger.warning(f"No valid items for index in channel {_key}")
+                    continue
+
+                if str(value[0]["item_params"].get("option_value", "")) == "-1":
+                    text = value[0]["item_params"].get("option_name", "")
+                else:
+                    text = value[0]["item_params"].get("index_name", "")
+                ui.append(
+                    {
+                        "component": "div",
+                        "props": {
+                            "class": "flex justify-start items-center",
+                            "show": "{{mtype == '" + _key + "'}}",
+                        },
+                        "content": [
+                            {
+                                "component": "div",
+                                "props": {"class": "mr-5"},
+                                "content": [
+                                    {
+                                        "component": "VLabel",
+                                        "text": text,
+                                    }
+                                ],
                             },
-                            "content": data,
-                        },
-                    ],
-                }
-            )
+                            {
+                                "component": "VChipGroup",
+                                "props": {
+                                    "model": value[0]["item_params"].get("index_item_key", "")
+                                },
+                                "content": data,
+                            },
+                        ],
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Failed to generate UI for channel {_key}: {str(e)}")
+            continue
 
     return ui
 
@@ -152,7 +169,7 @@ class TencentVideoDiscover(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/DDS-Derek/MoviePilot-Plugins/main/icons/tencentvideo_A.png"
     # 插件版本
-    plugin_version = "1.0.3"  # 更新版本号以标记优化
+    plugin_version = "1.0.5"  # 更新版本号以标记修复
     # 插件作者
     plugin_author = "DDSRem"
     # 作者主页
@@ -315,29 +332,34 @@ class TencentVideoDiscover(_PluginBase):
             """
             电影数据转换为MediaInfo
             """
-            # 尝试获取 new_pic_vt 字段
-            poster_url = movie_info.get("new_pic_vt", "")
+            # 尝试获取图片字段，优先级：new_pic_vt > poster_url > pic_url > image_url
+            poster_url = movie_info.get("new_pic_vt") or \
+                        movie_info.get("poster_url") or \
+                        movie_info.get("pic_url") or \
+                        movie_info.get("image_url") or ""
+            
+            title = movie_info.get("title", "Unknown Title")
             if not poster_url or not poster_url.startswith(('http://', 'https://')):
-                logger.warning(f"Invalid or missing poster URL for {movie_info.get('title')}: {poster_url}")
-                # 尝试从 item_params 中寻找备用图片字段
-                poster_url = movie_info.get("item_params", {}).get("pic_url") or \
-                            movie_info.get("item_params", {}).get("image_url") or \
-                            "https://v.qq.com/assets/default_poster.jpg"  # 默认图片 URL
+                logger.warning(f"Invalid or missing poster URL for movie '{title}': {poster_url}")
+                poster_url = "https://v.qq.com/assets/images/default_poster.png"  # 默认图片
             else:
-                # 移除 /350 后验证 URL
+                # 移除 /350 并验证 URL
                 poster_url = re.sub(r'/350', '', poster_url)
                 if not poster_url.startswith(('http://', 'https://')):
-                    logger.warning(f"Processed poster URL invalid for {movie_info.get('title')}: {poster_url}")
-                    poster_url = "https://v.qq.com/assets/default_poster.jpg"
-            
-            logger.debug(f"Final poster URL for {movie_info.get('title')}: {poster_url}")
+                    logger.warning(f"Processed poster URL invalid for movie '{title}': {poster_url}")
+                    poster_url = "https://v.qq.com/assets/images/default_poster.png"
+                else:
+                    # 对 URL 进行编码，确保特殊字符不会导致加载失败
+                    poster_url = urllib.parse.quote(poster_url, safe=':/?=&')
+
+            logger.debug(f"Final poster URL for movie '{title}': {poster_url}")
             return schemas.MediaInfo(
                 type="电影",
-                title=movie_info.get("title"),
+                title=title,
                 year=movie_info.get("year"),
-                title_year=f"{movie_info.get('title')} ({movie_info.get('year')})",
+                title_year=f"{title} ({movie_info.get('year')})",
                 mediaid_prefix="tencentvideo",
-                media_id=str(movie_info.get("cid")),
+                media_id=str(movie_info.get("cid", "")),
                 poster_path=poster_url,
             )
 
@@ -345,29 +367,34 @@ class TencentVideoDiscover(_PluginBase):
             """
             电视剧数据转换为MediaInfo
             """
-            # 尝试获取 new_pic_vt 字段
-            poster_url = series_info.get("new_pic_vt", "")
+            # 尝试获取图片字段，优先级：new_pic_vt > poster_url > pic_url > image_url
+            poster_url = series_info.get("new_pic_vt") or \
+                        series_info.get("poster_url") or \
+                        series_info.get("pic_url") or \
+                        series_info.get("image_url") or ""
+            
+            title = series_info.get("title", "Unknown Title")
             if not poster_url or not poster_url.startswith(('http://', 'https://')):
-                logger.warning(f"Invalid or missing poster URL for {series_info.get('title')}: {poster_url}")
-                # 尝试从 item_params 中寻找备用图片字段
-                poster_url = series_info.get("item_params", {}).get("pic_url") or \
-                            series_info.get("item_params", {}).get("image_url") or \
-                            "https://v.qq.com/assets/default_poster.jpg"  # 默认图片 URL
+                logger.warning(f"Invalid or missing poster URL for series '{title}': {poster_url}")
+                poster_url = "https://v.qq.com/assets/images/default_poster.png"  # 默认图片
             else:
-                # 移除 /350 后验证 URL
+                # 移除 /350 并验证 URL
                 poster_url = re.sub(r'/350', '', poster_url)
                 if not poster_url.startswith(('http://', 'https://')):
-                    logger.warning(f"Processed poster URL invalid for {series_info.get('title')}: {poster_url}")
-                    poster_url = "https://v.qq.com/assets/default_poster.jpg"
-            
-            logger.debug(f"Final poster URL for {series_info.get('title')}: {poster_url}")
+                    logger.warning(f"Processed poster URL invalid for series '{title}': {poster_url}")
+                    poster_url = "https://v.qq.com/assets/images/default_poster.png"
+                else:
+                    # 对 URL 进行编码，确保特殊字符不会导致加载失败
+                    poster_url = urllib.parse.quote(poster_url, safe=':/?=&')
+
+            logger.debug(f"Final poster URL for series '{title}': {poster_url}")
             return schemas.MediaInfo(
                 type="电视剧",
-                title=series_info.get("title"),
+                title=title,
                 year=series_info.get("year"),
-                title_year=f"{series_info.get('title')} ({series_info.get('year')})",
+                title_year=f"{title} ({series_info.get('year')})",
                 mediaid_prefix="tencentvideo",
-                media_id=str(series_info.get("cid")),
+                media_id=str(series_info.get("cid", "")),
                 poster_path=poster_url,
             )
 
@@ -423,22 +450,42 @@ class TencentVideoDiscover(_PluginBase):
                 params.update({"gender": gender})
             result = self.__request(page, mtype, **params)
         except Exception as err:
-            logger.error(f"Error fetching Tencent Video data: {str(err)}")
+            logger.error(f"Error fetching Tencent Video data for mtype {mtype}, page {page}: {str(err)}")
             return []
+        
         if not result:
+            logger.warning(f"No results returned for mtype {mtype}, page {page}")
             return []
+        
         if mtype == "movie":
-            results = [
-                __movie_to_media(movie.get("item_params", {}))
-                for movie in result
-                if str(movie.get("item_type", "")) == "2"
-            ]
+            results = []
+            for movie in result:
+                try:
+                    if str(movie.get("item_type", "")) != "2":
+                        continue
+                    item_params = movie.get("item_params", {})
+                    if not item_params:
+                        logger.warning(f"Missing item_params for movie in mtype {mtype}: {movie}")
+                        continue
+                    results.append(__movie_to_media(item_params))
+                except Exception as e:
+                    logger.error(f"Error processing movie item in mtype {mtype}: {str(e)}")
+                    continue
         else:
-            results = [
-                __series_to_media(series.get("item_params", {}))
-                for series in result
-                if str(series.get("item_type", "")) == "2"
-            ]
+            results = []
+            for series in result:
+                try:
+                    if str(series.get("item_type", "")) != "2":
+                        continue
+                    item_params = series.get("item_params", {})
+                    if not item_params:
+                        logger.warning(f"Missing item_params for series in mtype {mtype}: {series}")
+                        continue
+                    results.append(__series_to_media(item_params))
+                except Exception as e:
+                    logger.error(f"Error processing series item in mtype {mtype}: {str(e)}")
+                    continue
+        
         return results
 
     @staticmethod
