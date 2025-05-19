@@ -173,7 +173,7 @@ class TencentVideoDiscover(_PluginBase):
     # 插件作者
     plugin_author = "DDSRem"
     # 作者主页
-    author_url = "https://github.com/DDSRem"
+    author_url = "https://github.com/2be94a46ede60b178f0bcec88af2f1b1"
     # 插件配置项ID前缀
     plugin_config_prefix = "tencentvideodiscover_"
     # 加载顺序
