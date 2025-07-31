@@ -44,7 +44,7 @@ class P115StrmHelper(_PluginBase):
     # 插件名称
     plugin_name = "依依酱起来干活"
     # 插件描述
-    plugin_desc = "依依酱起来搬砖"
+    plugin_desc = "依依酱搬砖大全"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Frontend/refs/heads/v2/src/assets/images/misc/u115.png"
     # 插件版本
