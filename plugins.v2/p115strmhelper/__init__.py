@@ -42,9 +42,9 @@ session_manager = BaseSessionManager(session_class=Session)
 @capture_all_class_exceptions
 class P115StrmHelper(_PluginBase):
     # 插件名称
-    plugin_name = "115网盘STRM助手"
+    plugin_name = "依依酱起来干活"
     # 插件描述
-    plugin_desc = "115网盘STRM生成一条龙服务"
+    plugin_desc = "依依酱起来搬砖"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Frontend/refs/heads/v2/src/assets/images/misc/u115.png"
     # 插件版本
